@@ -129,7 +129,7 @@ net_svg = f'''<svg viewBox="0 0 680 290" width="100%" role="img" aria-label="MLP
 <text x="280" y="278" text-anchor="middle" font-size="11" fill="#5b6a76">隐藏层 24 · ReLU</text>
 <text x="450" y="278" text-anchor="middle" font-size="11" fill="#5b6a76">隐藏层 16 · ReLU</text>
 <text x="600" y="278" text-anchor="middle" font-size="11" fill="#5b6a76">输出 1</text>
-<text x="600" y="145" text-anchor="middle" font-size="10" fill="#fff" dy="3">ŷ</text>
+<text x="600" y="145" text-anchor="middle" font-size="11" fill="#0f766e" dy="4">ŷ</text>
 </svg>'''
 
 TPL = r'''<!DOCTYPE html>
