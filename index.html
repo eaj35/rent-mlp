@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>用 MLP 预测月租 · 从数据到部署的全过程</title>
+<style>
+:root{--bg:#fbfcfc;--surface:#fff;--text:#14202b;--soft:#5b6a76;--accent:#4f46e5;
+--accent2:#0f766e;--soft-bg:#eef2ff;--line:#e3e9eb;--code-bg:#f6f8fa;
+--warn-bg:#fff7ed;--warn-line:#fdba74;--warn-text:#9a3412}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{font-family:"PingFang SC","Microsoft YaHei","Segoe UI",-apple-system,sans-serif;
+background:var(--bg);color:var(--text);line-height:1.8;font-size:15px}
+.wrap{max-width:940px;margin:0 auto;padding:0 24px 90px}
+header{padding:70px 0 36px;border-bottom:1px solid var(--line)}
+.kicker{font-size:12px;letter-spacing:3px;color:var(--accent);font-weight:600;margin-bottom:14px}
+h1{font-size:38px;line-height:1.3;font-weight:700}
+h1 em{color:var(--accent);font-style:normal}
+.lead{margin-top:16px;color:var(--soft);font-size:16.5px;max-width:680px}
+.chips{margin-top:24px}
+.chip{display:inline-block;padding:5px 13px;margin:3px;border-radius:999px;font-size:13px;
+background:var(--soft-bg);color:#3730a3;border:1px solid #c7d2fe}
+nav{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px 22px;margin:26px 0 10px}
+nav a{color:var(--accent);text-decoration:none;font-size:14px;display:inline-block;margin:3px 14px 3px 0}
+h2{font-size:26px;font-weight:700;margin:56px 0 8px;scroll-margin-top:16px}
+h2 .n{display:block;font-size:12px;letter-spacing:2px;color:var(--accent);font-weight:600;margin-bottom:5px}
+h3{font-size:18px;font-weight:700;margin:28px 0 8px}
+p{margin:10px 0}
+ul,ol{margin:10px 0 10px 22px}li{margin:5px 0}
+a{color:var(--accent)}
+table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;background:var(--surface)}
+th,td{border:1px solid var(--line);padding:9px 12px;text-align:left;vertical-align:top}
+th{background:var(--soft-bg);font-weight:600;color:#312e81}
+td.num{font-variant-numeric:tabular-nums;text-align:right}
+code{background:var(--code-bg);padding:2px 6px;border-radius:4px;font-size:13px;
+font-family:"Cascadia Code",Consolas,monospace;color:#3730a3}
+pre{background:var(--code-bg);border:1px solid var(--line);border-radius:8px;padding:16px;
+overflow-x:auto;margin:14px 0;font-size:12.5px;line-height:1.65;
+font-family:"Cascadia Code",Consolas,monospace}
+.callout{border-radius:10px;padding:16px 20px;margin:18px 0;font-size:14.5px}
+.callout.warn{background:var(--warn-bg);border:1px solid var(--warn-line);color:var(--warn-text)}
+.callout.info{background:#ecfdf5;border:1px solid #99f6e4;color:#134e4a}
+.callout b{display:block;margin-bottom:4px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin:18px 0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px}
+.card .v{font-size:28px;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums}
+.card .k{font-size:13px;color:var(--soft);margin-top:4px}
+.formula{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);
+border-radius:8px;padding:18px 22px;margin:16px 0;font-family:"Cascadia Code",Consolas,monospace;
+font-size:14px;line-height:2}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:26px;margin:20px 0}
+.predictor{display:grid;grid-template-columns:1fr 1fr;gap:34px}
+.field{margin-bottom:18px}
+.field label{display:block;font-size:14px;font-weight:600;margin-bottom:6px}
+.field label span{float:right;color:var(--accent);font-variant-numeric:tabular-nums}
+.field input[type=range]{width:100%;accent-color:var(--accent)}
+.field select,.field input[type=number]{width:100%;padding:9px 11px;border:1px solid var(--line);
+border-radius:8px;background:var(--surface);color:var(--text);font-size:14px}
+.hint{font-size:12.5px;color:var(--soft);margin-top:4px}
+.result{background:var(--soft-bg);border-radius:14px;padding:30px;text-align:center;
+display:flex;flex-direction:column;justify-content:center}
+.result .big{font-size:46px;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums;line-height:1.2}
+.result .unit{font-size:15px;color:var(--soft);margin-top:2px}
+.result .sub{margin-top:18px;font-size:14px;color:var(--soft)}
+.result .sub b{color:var(--text)}
+.act-title{font-size:13px;color:var(--soft);margin:22px 0 8px}
+.acts{display:flex;flex-wrap:wrap;gap:3px}
+.act{width:13px;height:13px;border-radius:2px}
+details{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin:16px 0}
+summary{cursor:pointer;font-weight:600;font-size:15px}
+footer{border-top:1px solid var(--line);margin-top:56px;padding-top:26px;text-align:center;
+color:var(--soft);font-size:13px}
+@media(max-width:720px){h1{font-size:29px}.predictor{grid-template-columns:1fr}}
+@media print{body{background:#fff}h2{page-break-after:avoid}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">MLP · 回归预测 · 全流程复盘</div>
+  <h1>用 <em>多层感知机</em> 预测月租</h1>
+  <p class="lead">输入距市中心距离、装修程度、楼层、城市物价水平和面积，输出预测月租。
+  这一页把数据来源、MLP 原理、训练过程、模型权重和一个跑在浏览器里的实时预测器，全部装进了一个静态 HTML。</p>
+  <div class="chips">
+    <span class="chip">5-24-16-1 全连接网络</span>
+    <span class="chip">ReLU + Adam + MSE</span>
+    <span class="chip">纯 NumPy 训练</span>
+    <span class="chip">纯 JavaScript 推理</span>
+    <span class="chip">单文件 · 无依赖 · 可离线</span>
+  </div>
+</header>
+
+<nav>
+  <a href="#s1">① 数据来源</a><a href="#s2">② 特征工程</a><a href="#s3">③ MLP 原理</a>
+  <a href="#s4">④ 训练过程</a><a href="#s5">⑤ 训练结果</a><a href="#s6">⑥ 在线预测</a>
+  <a href="#s7">⑦ 完整代码</a><a href="#s8">⑧ 局限与参考</a>
+</nav>
+
+<h2 id="s1"><span class="n">PART 01</span>数据来源：从网上找了什么</h2>
+
+<p>没有凭空编数据。训练用的材料来自三类公开网络来源：</p>
+
+<table>
+  <tr><th>来源</th><th>内容</th><th>用途</th></tr>
+  <tr><td><b>A · 真实房源</b><br><a href="https://github.com/XiyueWang/shanghai_rental_analysis_lianjia" target="_blank">上海链家租房数据集（GitHub 开源）</a></td>
+      <td>10,998 条 2020 年抓取的上海租房挂牌记录，含月租、经纬度、面积、楼层、精装/近地铁等标签</td>
+      <td>学习的<b>主体样本</b>；距离、装修、楼层、面积与租金的真实关系都来自这里</td></tr>
+  <tr><td><b>B · 城市租金统计</b><br><a href="https://news.caijingmobile.com/article/detail/552055" target="_blank">《财经》35 城住宅租金（2025 上半年）</a><br><a href="https://www.cih-index.com/news/2025-04-23/52652700.html" target="_blank">中指研究院 50 城报告</a></td>
+      <td>各城市住宅平均租金（元/㎡/月）：北京 117.2、上海 104.4、深圳 96.8、杭州 62.5、广州 59.5、南京 54.2 …… 银川 15.5；一线 83.34 / 二线 29.89 / 三四线 24.45</td>
+      <td>构造<b>城市物价水平</b>这一维特征，并把单城样本扩展到多城市</td></tr>
+  <tr><td><b>C · 实证研究</b><br>武汉 / 杭州 / 长沙 / 广州 特征价格模型</td>
+      <td>距商业中心每远 1 km，租金约降 1.5 元/月/㎡；装修评分每 +1，约升 4.62 元/月/㎡；到 CBD 距离为首要因素等</td>
+      <td>用来<b>校验</b>模型学到的方向和量级是否符合真实研究，不直接拿来拟合</td></tr>
+</table>
+
+<div class="callout warn">
+  <b>⚠ 关于训练数据，必须说清楚的一件事</b>
+  A 是真实房源，但它是<b>单一城市（上海）</b>的，天然没有「城市物价水平」的变化。
+  为了让模型能学到你要求的这一维，我用 B 里公开发布的各城市租金指数，把每条真实房源按
+  <code>城市指数 / 上海指数</code> 做整体价格缩放，并加上 5% 的市场噪声，扩展成多城市样本。
+  <br><br>
+  所以最终训练集是 <b>「真实房源结构 + 公开统计标定的扩展样本」</b>，
+  <b>不是</b>真实的多城市成交数据集，<b>不能</b>拿去做商业定价或投资判断。
+  页面的价值在于演示 MLP 的完整方法论，而不是提供一个可用的估价器。
+</div>
+
+<h3>真实房源长什么样（节选）</h3>
+<table>
+  <tr><th>小区</th><th>面积 ㎡</th><th>楼层</th><th>装修标签</th><th>月租 元</th><th>单价 元/㎡</th></tr>
+  <tr><td>大宁金茂府</td><td class='num'>112</td><td>中楼层/22层</td><td>精装</td><td class='num'>22,500</td><td class='num'>200.9</td></tr><tr><td>肇嘉浜路853弄</td><td class='num'>40</td><td>低楼层/6层</td><td>精装</td><td class='num'>5,500</td><td class='num'>137.5</td></tr><tr><td>布鲁斯小镇(一期)(别墅)</td><td class='num'>176</td><td>低楼层/3层</td><td>精装</td><td class='num'>10,000</td><td class='num'>56.8</td></tr><tr><td>经纬观澜弘郡家园(三期)</td><td class='num'>160</td><td>低楼层/18层</td><td>精装</td><td class='num'>12,500</td><td class='num'>78.1</td></tr><tr><td>绿地远香湖1号</td><td class='num'>93</td><td>高楼层/18层</td><td>精装</td><td class='num'>4,500</td><td class='num'>48.4</td></tr><tr><td>万科天空之城</td><td class='num'>99</td><td>中楼层/21层</td><td>精装</td><td class='num'>9,200</td><td class='num'>92.9</td></tr>
+</table>
+
+<h3>真实数据里确实存在中心-边缘梯度</h3>
+<p>我用经纬度算到人民广场的距离，分组统计后得到下面这张表。单价与距离的相关系数为
+<b>-0.71</b>，说明「离市中心越远越便宜」在真实数据里是成立的，不是我硬塞给模型的。</p>
+<table>
+  <tr><th>距市中心</th><th>样本数</th><th>平均月租</th><th>平均单价</th></tr>
+  <tr><td>0–3 km</td><td class="num">1,121</td><td class="num">13,566</td><td class="num">163.4</td></tr>
+  <tr><td>3–6 km</td><td class="num">1,901</td><td class="num">10,395</td><td class="num">130.6</td></tr>
+  <tr><td>6–10 km</td><td class="num">2,048</td><td class="num">9,632</td><td class="num">109.7</td></tr>
+  <tr><td>10–15 km</td><td class="num">1,818</td><td class="num">7,354</td><td class="num">85.2</td></tr>
+  <tr><td>15–25 km</td><td class="num">2,095</td><td class="num">6,161</td><td class="num">65.0</td></tr>
+  <tr><td>25–50 km</td><td class="num">1,270</td><td class="num">3,988</td><td class="num">44.3</td></tr>
+</table>
+
+<h2 id="s2"><span class="n">PART 02</span>特征工程：把描述变成数字</h2>
+
+<table>
+  <tr><th>输入特征</th><th>怎么得到</th><th>范围</th></tr>
+  <tr><td>距市中心 (km)</td><td>由房源经纬度用 Haversine 公式算到人民广场 (121.4737, 31.2304)</td><td class="num">0 – 45</td></tr>
+  <tr><td>装修程度</td><td>链家「精装」标签 → 3；有电梯且配套数 ≥3 → 2；其余 → 1（这是代理变量，不是真实装修评级）</td><td class="num">1 – 3</td></tr>
+  <tr><td>所在楼层</td><td>「低/中/高楼层 / 总层数」按 0.2 / 0.5 / 0.8 折算成楼层数（估计值）</td><td class="num">1 – 40</td></tr>
+  <tr><td>城市物价水平</td><td>公开的城市住宅平均租金（元/㎡/月）</td><td class="num">15.5 – 117.2</td></tr>
+  <tr><td>面积 (㎡)</td><td>房源原始字段。研究显示面积与区域位置是租金最强的两个解释变量，所以补上这一维</td><td class="num">10 – 250</td></tr>
+</table>
+
+<p>清洗规则：保留月租 1,000–40,000 元、面积 10–250 ㎡、经纬度落在上海范围内的记录，
+最终得到 <b>10,253</b> 条有效样本，按 8:2 划分训练集 / 验证集。输入做标准化
+<code>x' = (x - μ) / σ</code>，目标月租也标准化，避免量纲差异让梯度下降跑偏。</p>
+
+<h2 id="s3"><span class="n">PART 03</span>MLP 原理</h2>
+
+<p>多层感知机（Multilayer Perceptron）就是若干层全连接堆叠起来。每一层先做一次线性变换，
+再过一个非线性激活函数；没有非线性，再多层也等价于一个线性回归，学不出弯曲的关系。</p>
+
+<div class="panel"><svg viewBox="0 0 680 290" width="100%" role="img" aria-label="MLP 网络结构示意">
+<title>5-24-16-1 全连接神经网络</title>
+<line x1="120" y1="40.0" x2="280" y2="25.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="40.0" x2="280" y2="55.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="40.0" x2="280" y2="85.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="40.0" x2="280" y2="115.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="40.0" x2="280" y2="145.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="40.0" x2="280" y2="175.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="40.0" x2="280" y2="205.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="40.0" x2="280" y2="235.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="40.0" x2="280" y2="265.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="92.5" x2="280" y2="25.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="92.5" x2="280" y2="55.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="92.5" x2="280" y2="85.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="92.5" x2="280" y2="115.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="92.5" x2="280" y2="145.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="92.5" x2="280" y2="175.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="92.5" x2="280" y2="205.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="92.5" x2="280" y2="235.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="92.5" x2="280" y2="265.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="145.0" x2="280" y2="25.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="145.0" x2="280" y2="55.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="145.0" x2="280" y2="85.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="145.0" x2="280" y2="115.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="145.0" x2="280" y2="145.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="145.0" x2="280" y2="175.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="145.0" x2="280" y2="205.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="145.0" x2="280" y2="235.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="145.0" x2="280" y2="265.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="197.5" x2="280" y2="25.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="197.5" x2="280" y2="55.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="197.5" x2="280" y2="85.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="197.5" x2="280" y2="115.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="197.5" x2="280" y2="145.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="197.5" x2="280" y2="175.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="197.5" x2="280" y2="205.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="197.5" x2="280" y2="235.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="197.5" x2="280" y2="265.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="250.0" x2="280" y2="25.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="250.0" x2="280" y2="55.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="250.0" x2="280" y2="85.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="250.0" x2="280" y2="115.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="250.0" x2="280" y2="145.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="250.0" x2="280" y2="175.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="250.0" x2="280" y2="205.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="250.0" x2="280" y2="235.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="120" y1="250.0" x2="280" y2="265.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="25.0" x2="450" y2="35.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="25.0" x2="450" y2="71.7" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="25.0" x2="450" y2="108.3" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="25.0" x2="450" y2="145.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="25.0" x2="450" y2="181.7" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="25.0" x2="450" y2="218.3" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="25.0" x2="450" y2="255.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="55.0" x2="450" y2="35.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="55.0" x2="450" y2="71.7" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="55.0" x2="450" y2="108.3" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="55.0" x2="450" y2="145.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="55.0" x2="450" y2="181.7" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="55.0" x2="450" y2="218.3" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="55.0" x2="450" y2="255.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="85.0" x2="450" y2="35.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="85.0" x2="450" y2="71.7" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="85.0" x2="450" y2="108.3" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="85.0" x2="450" y2="145.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="85.0" x2="450" y2="181.7" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="85.0" x2="450" y2="218.3" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="85.0" x2="450" y2="255.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="115.0" x2="450" y2="35.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="115.0" x2="450" y2="71.7" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="115.0" x2="450" y2="108.3" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="115.0" x2="450" y2="145.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="115.0" x2="450" y2="181.7" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="115.0" x2="450" y2="218.3" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="115.0" x2="450" y2="255.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="145.0" x2="450" y2="35.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="145.0" x2="450" y2="71.7" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="145.0" x2="450" y2="108.3" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="145.0" x2="450" y2="145.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="145.0" x2="450" y2="181.7" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="145.0" x2="450" y2="218.3" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="145.0" x2="450" y2="255.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="175.0" x2="450" y2="35.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="175.0" x2="450" y2="71.7" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="175.0" x2="450" y2="108.3" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="175.0" x2="450" y2="145.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="175.0" x2="450" y2="181.7" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="175.0" x2="450" y2="218.3" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="175.0" x2="450" y2="255.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="205.0" x2="450" y2="35.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="205.0" x2="450" y2="71.7" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="205.0" x2="450" y2="108.3" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="205.0" x2="450" y2="145.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="205.0" x2="450" y2="181.7" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="205.0" x2="450" y2="218.3" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="205.0" x2="450" y2="255.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="235.0" x2="450" y2="35.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="235.0" x2="450" y2="71.7" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="235.0" x2="450" y2="108.3" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="235.0" x2="450" y2="145.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="235.0" x2="450" y2="181.7" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="235.0" x2="450" y2="218.3" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="235.0" x2="450" y2="255.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="265.0" x2="450" y2="35.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="265.0" x2="450" y2="71.7" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="265.0" x2="450" y2="108.3" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="265.0" x2="450" y2="145.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="265.0" x2="450" y2="181.7" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="265.0" x2="450" y2="218.3" stroke="#c7d2fe" stroke-width="0.6"/><line x1="280" y1="265.0" x2="450" y2="255.0" stroke="#c7d2fe" stroke-width="0.6"/><line x1="450" y1="35.0" x2="600" y2="145.0" stroke="#a5b4fc" stroke-width="0.8"/><line x1="450" y1="71.7" x2="600" y2="145.0" stroke="#a5b4fc" stroke-width="0.8"/><line x1="450" y1="108.3" x2="600" y2="145.0" stroke="#a5b4fc" stroke-width="0.8"/><line x1="450" y1="145.0" x2="600" y2="145.0" stroke="#a5b4fc" stroke-width="0.8"/><line x1="450" y1="181.7" x2="600" y2="145.0" stroke="#a5b4fc" stroke-width="0.8"/><line x1="450" y1="218.3" x2="600" y2="145.0" stroke="#a5b4fc" stroke-width="0.8"/><line x1="450" y1="255.0" x2="600" y2="145.0" stroke="#a5b4fc" stroke-width="0.8"/>
+<circle cx="120" cy="40.0" r="9" fill="#4f46e5" fill-opacity="0.18" stroke="#4f46e5" stroke-width="1.2"/><text x="104" y="44.0" text-anchor="end" font-size="11" fill="#334155">距市中心</text><circle cx="120" cy="92.5" r="9" fill="#4f46e5" fill-opacity="0.18" stroke="#4f46e5" stroke-width="1.2"/><text x="104" y="96.5" text-anchor="end" font-size="11" fill="#334155">装修</text><circle cx="120" cy="145.0" r="9" fill="#4f46e5" fill-opacity="0.18" stroke="#4f46e5" stroke-width="1.2"/><text x="104" y="149.0" text-anchor="end" font-size="11" fill="#334155">楼层</text><circle cx="120" cy="197.5" r="9" fill="#4f46e5" fill-opacity="0.18" stroke="#4f46e5" stroke-width="1.2"/><text x="104" y="201.5" text-anchor="end" font-size="11" fill="#334155">城市物价</text><circle cx="120" cy="250.0" r="9" fill="#4f46e5" fill-opacity="0.18" stroke="#4f46e5" stroke-width="1.2"/><text x="104" y="254.0" text-anchor="end" font-size="11" fill="#334155">面积</text>
+<circle cx="280" cy="25.0" r="7" fill="#6366f1" fill-opacity="0.18" stroke="#6366f1" stroke-width="1.2"/><circle cx="280" cy="55.0" r="7" fill="#6366f1" fill-opacity="0.18" stroke="#6366f1" stroke-width="1.2"/><circle cx="280" cy="85.0" r="7" fill="#6366f1" fill-opacity="0.18" stroke="#6366f1" stroke-width="1.2"/><circle cx="280" cy="115.0" r="7" fill="#6366f1" fill-opacity="0.18" stroke="#6366f1" stroke-width="1.2"/><circle cx="280" cy="145.0" r="7" fill="#6366f1" fill-opacity="0.18" stroke="#6366f1" stroke-width="1.2"/><circle cx="280" cy="175.0" r="7" fill="#6366f1" fill-opacity="0.18" stroke="#6366f1" stroke-width="1.2"/><circle cx="280" cy="205.0" r="7" fill="#6366f1" fill-opacity="0.18" stroke="#6366f1" stroke-width="1.2"/><circle cx="280" cy="235.0" r="7" fill="#6366f1" fill-opacity="0.18" stroke="#6366f1" stroke-width="1.2"/><circle cx="280" cy="265.0" r="7" fill="#6366f1" fill-opacity="0.18" stroke="#6366f1" stroke-width="1.2"/>
+<circle cx="450" cy="35.0" r="7" fill="#0f766e" fill-opacity="0.18" stroke="#0f766e" stroke-width="1.2"/><circle cx="450" cy="71.7" r="7" fill="#0f766e" fill-opacity="0.18" stroke="#0f766e" stroke-width="1.2"/><circle cx="450" cy="108.3" r="7" fill="#0f766e" fill-opacity="0.18" stroke="#0f766e" stroke-width="1.2"/><circle cx="450" cy="145.0" r="7" fill="#0f766e" fill-opacity="0.18" stroke="#0f766e" stroke-width="1.2"/><circle cx="450" cy="181.7" r="7" fill="#0f766e" fill-opacity="0.18" stroke="#0f766e" stroke-width="1.2"/><circle cx="450" cy="218.3" r="7" fill="#0f766e" fill-opacity="0.18" stroke="#0f766e" stroke-width="1.2"/><circle cx="450" cy="255.0" r="7" fill="#0f766e" fill-opacity="0.18" stroke="#0f766e" stroke-width="1.2"/>
+<circle cx="600" cy="145.0" r="12" fill="#0f766e" fill-opacity="0.18" stroke="#0f766e" stroke-width="1.2"/>
+<text x="120" y="278" text-anchor="middle" font-size="11" fill="#5b6a76">输入层 5</text>
+<text x="280" y="278" text-anchor="middle" font-size="11" fill="#5b6a76">隐藏层 24 · ReLU</text>
+<text x="450" y="278" text-anchor="middle" font-size="11" fill="#5b6a76">隐藏层 16 · ReLU</text>
+<text x="600" y="278" text-anchor="middle" font-size="11" fill="#5b6a76">输出 1</text>
+<text x="600" y="145" text-anchor="middle" font-size="10" fill="#fff" dy="3">ŷ</text>
+</svg></div>
+
+<h3>前向传播</h3>
+<div class="formula">
+z⁽¹⁾ = X W⁽¹⁾ + b⁽¹⁾ &nbsp;&nbsp; a⁽¹⁾ = ReLU(z⁽¹⁾)<br>
+z⁽²⁾ = a⁽¹⁾ W⁽²⁾ + b⁽²⁾ &nbsp; a⁽²⁾ = ReLU(z⁽²⁾)<br>
+ŷ = a⁽²⁾ W⁽³⁾ + b⁽³⁾<br>
+<br>
+ReLU(x) = max(0, x) &nbsp;&nbsp; L = (1/n) Σ (ŷ - y)²
+</div>
+
+<h3>反向传播</h3>
+<p>从损失函数出发，用链式法则逐层往回算每个权重的梯度，再用 Adam 更新：</p>
+<div class="formula">
+∂L/∂ŷ = 2(ŷ - y)/n<br>
+∂L/∂W⁽ˡ⁾ = a⁽ˡ⁻¹⁾ᵀ · δ⁽ˡ⁾ &nbsp;&nbsp; δ⁽ˡ⁾ = (W⁽ˡ⁺¹⁾ δ⁽ˡ⁺¹⁾) ⊙ 1[z⁽ˡ⁾ &gt; 0]<br>
+<br>
+m ← β₁m + (1-β₁)g &nbsp;&nbsp; v ← β₂v + (1-β₂)g²<br>
+W ← W - lr · m̂ / (√v̂ + ε)
+</div>
+<p>本页的预测器把训练好的 <code>W</code>、<code>b</code> 和标准化参数直接内嵌在 JavaScript 里，
+在浏览器里重跑一遍前向传播 —— 也就是说，<b>你拖动滑块时是真的在跑这个神经网络</b>，
+没有向任何服务器发请求。</p>
+
+<h2 id="s4"><span class="n">PART 04</span>训练过程</h2>
+
+<table>
+  <tr><th>超参数</th><th>取值</th></tr>
+  <tr><td>网络结构</td><td>5-24-16-1（输入 5 → 隐藏 24 → 隐藏 16 → 输出 1）</td></tr>
+  <tr><td>激活函数 / 损失函数 / 优化器</td><td>ReLU / MSE / Adam</td></tr>
+  <tr><td>学习率 / 批大小 / 轮数</td><td>0.004 / 256 / 900</td></tr>
+  <tr><td>训练集 / 验证集</td><td>8,202 / 2,051 条</td></tr>
+  <tr><td>实现</td><td>纯 NumPy 手写前向、反向与 Adam，无深度学习框架</td></tr>
+</table>
+
+<div class="panel"><svg viewBox="0 0 820 250" width="100%" role="img" aria-label="训练与验证损失曲线">
+<title>MLP 训练的 MSE 损失曲线</title>
+<line x1="52" y1="216.0" x2="804" y2="216.0" stroke="#e3e9eb" stroke-width="1"/><text x="44" y="220.0" text-anchor="end" font-size="11" fill="#5b6a76">0.00</text><line x1="52" y1="166.5" x2="804" y2="166.5" stroke="#e3e9eb" stroke-width="1"/><text x="44" y="170.5" text-anchor="end" font-size="11" fill="#5b6a76">0.10</text><line x1="52" y1="117.0" x2="804" y2="117.0" stroke="#e3e9eb" stroke-width="1"/><text x="44" y="121.0" text-anchor="end" font-size="11" fill="#5b6a76">0.21</text><line x1="52" y1="67.5" x2="804" y2="67.5" stroke="#e3e9eb" stroke-width="1"/><text x="44" y="71.5" text-anchor="end" font-size="11" fill="#5b6a76">0.31</text><line x1="52" y1="18.0" x2="804" y2="18.0" stroke="#e3e9eb" stroke-width="1"/><text x="44" y="22.0" text-anchor="end" font-size="11" fill="#5b6a76">0.42</text><text x="52.8" y="234" text-anchor="middle" font-size="11" fill="#5b6a76">1</text><text x="219.1" y="234" text-anchor="middle" font-size="11" fill="#5b6a76">200</text><text x="386.2" y="234" text-anchor="middle" font-size="11" fill="#5b6a76">400</text><text x="553.3" y="234" text-anchor="middle" font-size="11" fill="#5b6a76">600</text><text x="720.4" y="234" text-anchor="middle" font-size="11" fill="#5b6a76">800</text><text x="804.0" y="234" text-anchor="middle" font-size="11" fill="#5b6a76">900</text>
+<polyline points="52.8,61.9 64.5,147.2 77.1,153.3 89.6,152.9 102.1,154.4 114.7,157.2 127.2,154.9 139.7,156.6 152.3,158.4 164.8,158.2 177.3,158.5 189.9,159.9 202.4,159.9 214.9,158.3 227.5,153.9 240.0,160.9 252.5,160.6 265.1,160.9 277.6,160.0 290.1,161.5 302.7,160.3 315.2,159.2 327.7,160.6 340.3,162.1 352.8,161.3 365.3,162.4 377.9,161.9 390.4,160.9 402.9,162.8 415.5,162.3 428.0,163.3 440.5,160.6 453.1,162.7 465.6,163.1 478.1,158.8 490.7,163.7 503.2,160.6 515.7,161.6 528.3,163.6 540.8,163.3 553.3,161.6 565.9,161.5 578.4,164.9 590.9,162.3 603.5,163.4 616.0,152.6 628.5,164.9 641.1,164.1 653.6,163.8 666.1,165.4 678.7,163.9 691.2,165.8 703.7,164.3 716.3,165.7 728.8,164.9 741.3,164.4 753.9,166.2 766.4,165.2 778.9,163.6 791.5,166.1 804.0,165.7" fill="none" stroke="#4f46e5" stroke-width="2.2"/>
+<polyline points="52.8,36.0 64.5,143.8 77.1,147.3 89.6,145.9 102.1,146.3 114.7,149.8 127.2,148.9 139.7,147.9 152.3,150.5 164.8,150.1 177.3,151.4 189.9,151.6 202.4,152.8 214.9,148.6 227.5,148.1 240.0,153.0 252.5,151.9 265.1,152.0 277.6,149.1 290.1,152.1 302.7,151.7 315.2,150.6 327.7,150.3 340.3,151.3 352.8,147.2 365.3,150.5 377.9,150.0 390.4,151.0 402.9,153.2 415.5,148.8 428.0,152.9 440.5,148.5 453.1,150.2 465.6,151.6 478.1,143.6 490.7,151.1 503.2,145.7 515.7,150.2 528.3,152.0 540.8,152.7 553.3,151.4 565.9,148.8 578.4,150.1 590.9,151.2 603.5,147.2 616.0,144.7 628.5,149.2 641.1,151.7 653.6,151.9 666.1,152.5 678.7,151.1 691.2,150.8 703.7,148.1 716.3,150.4 728.8,148.5 741.3,147.4 753.9,149.9 766.4,148.1 778.9,150.9 791.5,151.4 804.0,152.2" fill="none" stroke="#0f766e" stroke-width="2.2" stroke-dasharray="5 3"/>
+<text x="798" y="30" text-anchor="end" font-size="12" fill="#4f46e5">训练集 MSE</text>
+<text x="798" y="48" text-anchor="end" font-size="12" fill="#0f766e">验证集 MSE</text>
+<text x="410.0" y="246" text-anchor="middle" font-size="11" fill="#5b6a76">训练轮次 epoch</text>
+</svg></div>
+<p style="font-size:13.5px;color:var(--soft)">两条曲线基本重合并持续下降，没有出现验证集损失回升，说明这个规模的网络没有明显过拟合。</p>
+
+<h2 id="s5"><span class="n">PART 05</span>训练结果</h2>
+
+<div class="cards">
+  <div class="card"><div class="v">0.8828</div><div class="k">验证集 R²</div></div>
+  <div class="card"><div class="v">697</div><div class="k">平均绝对误差（元/月）</div></div>
+  <div class="card"><div class="v">1,318</div><div class="k">RMSE（元/月）</div></div>
+  <div class="card"><div class="v">22.1%</div><div class="k">平均相对误差</div></div>
+</div>
+
+<h3>模型学到了什么（单因素敏感性）</h3>
+<p>把其余四个特征固定在中位数，只让一个特征从第 10 分位变到第 90 分位，看预测月租怎么动：</p>
+<table>
+  <tr><th>特征</th><th>低值</th><th>高值</th><th>低值月租</th><th>高值月租</th><th>变化</th></tr>
+  <tr><td>距市中心(km)</td><td class='num'>2.89</td><td class='num'>27.4</td><td class='num'>2,983</td><td class='num'>892</td><td class='num' style='color:#b91c1c;font-weight:600'>-2,091</td></tr><tr><td>装修程度</td><td class='num'>1.0</td><td class='num'>3.0</td><td class='num'>1,341</td><td class='num'>1,841</td><td class='num' style='color:#0f766e;font-weight:600'>+500</td></tr><tr><td>楼层</td><td class='num'>1.0</td><td class='num'>14.0</td><td class='num'>1,813</td><td class='num'>2,012</td><td class='num' style='color:#0f766e;font-weight:600'>+199</td></tr><tr><td>城市物价</td><td class='num'>20.1</td><td class='num'>104.4</td><td class='num'>1,496</td><td class='num'>7,427</td><td class='num' style='color:#0f766e;font-weight:600'>+5,931</td></tr><tr><td>面积</td><td class='num'>40.0</td><td class='num'>150.0</td><td class='num'>1,220</td><td class='num'>4,222</td><td class='num' style='color:#0f766e;font-weight:600'>+3,002</td></tr>
+</table>
+
+<div class="callout info">
+  <b>和实证研究对得上</b>
+  <ul style="margin-top:6px">
+    <li><b>距市中心 ↑ → 月租 ↓</b>：与武汉研究「距商业中心每远 1 km 租金降 1.5 元/月/㎡」、长沙研究「到 CBD 距离为首要因素」一致。</li>
+    <li><b>装修 ↑ → 月租 ↑</b>：与武汉研究「装修评分每 +1 约 +4.62 元/月/㎡」方向一致。</li>
+    <li><b>城市物价 ↑ → 月租大幅 ↑</b>：与公开的 35 城租金梯队（北京 117.2 vs 银川 15.5，差 7.6 倍）一致。</li>
+    <li><b>面积 ↑ → 月租 ↑</b>：广州、贝壳的特征价格模型都把建筑面积列为最强解释变量之一。</li>
+    <li><b>楼层影响较小</b>：广州研究发现装修程度在统一市场里甚至不显著，说明这类微观特征贡献本就弱于区位与面积 —— 模型给出的量级也确实最小。</li>
+  </ul>
+</div>
+
+<h2 id="s6"><span class="n">PART 06</span>在线预测器</h2>
+
+<div class="panel">
+  <div class="predictor">
+    <div>
+      <div class="field">
+        <label>距市中心 <span id="v_dist">8 km</span></label>
+        <input type="range" id="dist" min="0" max="40" step="0.5" value="8">
+        <div class="hint">按上海人民广场为基准的直线距离</div>
+      </div>
+      <div class="field">
+        <label>装修程度 <span id="v_deco">2 · 中等</span></label>
+        <input type="range" id="deco" min="1" max="3" step="1" value="2">
+        <div class="hint">1 简装 / 2 中等 / 3 精装（代理变量）</div>
+      </div>
+      <div class="field">
+        <label>所在楼层 <span id="v_floor">8 层</span></label>
+        <input type="range" id="floor" min="1" max="40" step="1" value="8">
+      </div>
+      <div class="field">
+        <label>城市物价水平</label>
+        <select id="city"><option value="117.2" >北京（117.2 元/㎡/月）</option><option value="104.4" selected>上海（104.4 元/㎡/月）</option><option value="96.8" >深圳（96.8 元/㎡/月）</option><option value="62.5" >杭州（62.5 元/㎡/月）</option><option value="59.5" >广州（59.5 元/㎡/月）</option><option value="54.2" >南京（54.2 元/㎡/月）</option><option value="48.0" >三亚（48.0 元/㎡/月）</option><option value="45.0" >厦门（45.0 元/㎡/月）</option><option value="34.0" >苏州（34.0 元/㎡/月）</option><option value="32.0" >宁波（32.0 元/㎡/月）</option><option value="32.0" >福州（32.0 元/㎡/月）</option><option value="32.0" >天津（32.0 元/㎡/月）</option><option value="30.0" >武汉（30.0 元/㎡/月）</option><option value="29.0" >青岛（29.0 元/㎡/月）</option><option value="28.0" >大连（28.0 元/㎡/月）</option><option value="28.0" >成都（28.0 元/㎡/月）</option><option value="26.0" >西安（26.0 元/㎡/月）</option><option value="26.0" >合肥（26.0 元/㎡/月）</option><option value="25.0" >长沙（25.0 元/㎡/月）</option><option value="25.0" >重庆（25.0 元/㎡/月）</option><option value="24.0" >昆明（24.0 元/㎡/月）</option><option value="23.0" >南昌（23.0 元/㎡/月）</option><option value="23.0" >南宁（23.0 元/㎡/月）</option><option value="22.0" >兰州（22.0 元/㎡/月）</option><option value="22.0" >沈阳（22.0 元/㎡/月）</option><option value="22.0" >石家庄（22.0 元/㎡/月）</option><option value="21.8" >郑州（21.8 元/㎡/月）</option><option value="21.8" >贵阳（21.8 元/㎡/月）</option><option value="21.0" >长春（21.0 元/㎡/月）</option><option value="21.0" >哈尔滨（21.0 元/㎡/月）</option><option value="21.0" >乌鲁木齐（21.0 元/㎡/月）</option><option value="20.3" >太原（20.3 元/㎡/月）</option><option value="20.1" >呼和浩特（20.1 元/㎡/月）</option><option value="20.0" >南通（20.0 元/㎡/月）</option><option value="20.0" >西宁（20.0 元/㎡/月）</option><option value="19.0" >惠州（19.0 元/㎡/月）</option><option value="15.5" >银川（15.5 元/㎡/月）</option></select>
+        <div class="hint">括号内为该城市住宅平均租金（元/㎡/月）</div>
+      </div>
+      <div class="field">
+        <label>面积 <span id="v_area">60 ㎡</span></label>
+        <input type="range" id="area" min="10" max="200" step="1" value="60">
+      </div>
+    </div>
+    <div class="result">
+      <div class="big" id="out">—</div>
+      <div class="unit">元 / 月 · 模型预测</div>
+      <div class="sub">折合单价 <b id="out_unit">—</b> 元/㎡/月<br>
+      相当于该城市基准单价的 <b id="out_ratio">—</b></div>
+      <div class="act-title">隐藏层 1（24 个神经元）的实时激活</div>
+      <div class="acts" id="acts1"></div>
+      <div class="act-title">隐藏层 2（16 个神经元）的实时激活</div>
+      <div class="acts" id="acts2"></div>
+    </div>
+  </div>
+</div>
+<p style="font-size:13.5px;color:var(--soft)">
+提示：训练数据来自 2020 年上海挂牌房源，且城市维度为统计标定扩展。
+此处的数字只用于演示 MLP 的推理过程，请勿作为真实租金参考。</p>
+
+<h2 id="s7"><span class="n">PART 07</span>完整训练代码</h2>
+<p>整个流程用纯 NumPy 写成，不依赖 PyTorch / TensorFlow。点击展开可以直接复制运行。</p>
+<details>
+  <summary>展开 train_mlp.py（数据构建 + MLP + 训练 + 导出，约 250 行）</summary>
+  <pre>#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+&quot;&quot;&quot;
+月租预测 MLP —— 数据构建 + 训练 + 导出
+
+数据来源（全部为网络公开材料）：
+  A. 真实房源：上海链家租房 10,998 条（GitHub 开源，2020-10 抓取）
+     仓库 https://github.com/XiyueWang/shanghai_rental_analysis_lianjia
+     字段由该仓库 scraper/scraper.py 定义，无表头，共 21 列。
+  B. 城市租金水平：35 城住宅租金均价（2025 上半年，元/㎡/月）
+     《财经》https://news.caijingmobile.com/article/detail/552055
+     中指研究院 50 城报告 https://www.cih-index.com/news/2025-04-23/52652700.html
+  C. 影响因素实证系数（用于校验模型学到的方向是否合理）：
+     武汉/杭州/长沙/广州 特征价格模型研究，见 HTML 页面「参考资料」。
+
+重要说明：
+  单一城市样本无法体现「城市物价水平」。因此以真实上海房源为结构骨架，
+  用公开的城市租金指数把样本扩展到多个城市（价格按指数比例缩放）。
+  这属于「真实房源结构 + 公开统计标定的扩展样本」，不是可直接用于
+  商业定价的真实成交数据集。页面上会明确标注，不冒充真实多城市数据。
+
+输出：
+  model.json  —— 网络权重、标准化参数、训练曲线、评估指标
+&quot;&quot;&quot;
+import csv
+import json
+import math
+import os
+import random
+import sys
+
+import numpy as np
+
+sys.stdout.reconfigure(encoding=&quot;utf-8&quot;)
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+RAW = os.path.join(HERE, &quot;data&quot;, &quot;lianjia_shanghai.csv&quot;)
+
+# 上海人民广场（作为市中心基准点）
+CENTER_LON, CENTER_LAT = 121.4737, 31.2304
+
+# 21 列字段名（依据 scraper.py 的写出顺序）
+COLS = [
+    &quot;community&quot;, &quot;rent_type&quot;, &quot;beds&quot;, &quot;price&quot;, &quot;lon&quot;, &quot;lat&quot;,
+    &quot;tag_balcony&quot;, &quot;tag_pay1&quot;, &quot;tag_apartment&quot;, &quot;tag_monthly&quot;, &quot;tag_anytime&quot;,
+    &quot;tag_subway&quot;, &quot;tag_bathroom&quot;, &quot;tag_fine_deco&quot;, &quot;tag_new&quot;,
+    &quot;area&quot;, &quot;orientation&quot;, &quot;level&quot;, &quot;elevator&quot;, &quot;parking&quot;, &quot;amenities&quot;,
+]
+
+# 城市租金水平（元/㎡/月）。标注 exact 的来自《财经》35 城表；
+# 其余按中指研究院「一线 83.34 / 二线 29.89 / 三四线 24.45」分档估计。
+CITY_INDEX = {
+    &quot;北京&quot;: (117.2, &quot;exact&quot;), &quot;上海&quot;: (104.4, &quot;exact&quot;), &quot;深圳&quot;: (96.8, &quot;exact&quot;),
+    &quot;杭州&quot;: (62.5, &quot;exact&quot;), &quot;广州&quot;: (59.5, &quot;exact&quot;), &quot;南京&quot;: (54.2, &quot;exact&quot;),
+    &quot;厦门&quot;: (45.0, &quot;tier&quot;), &quot;三亚&quot;: (48.0, &quot;tier&quot;), &quot;苏州&quot;: (34.0, &quot;tier&quot;),
+    &quot;宁波&quot;: (32.0, &quot;tier&quot;), &quot;福州&quot;: (32.0, &quot;tier&quot;), &quot;天津&quot;: (32.0, &quot;tier&quot;),
+    &quot;武汉&quot;: (30.0, &quot;tier&quot;), &quot;青岛&quot;: (29.0, &quot;tier&quot;), &quot;大连&quot;: (28.0, &quot;tier&quot;),
+    &quot;成都&quot;: (28.0, &quot;tier&quot;), &quot;西安&quot;: (26.0, &quot;tier&quot;), &quot;合肥&quot;: (26.0, &quot;tier&quot;),
+    &quot;长沙&quot;: (25.0, &quot;tier&quot;), &quot;重庆&quot;: (25.0, &quot;tier&quot;), &quot;昆明&quot;: (24.0, &quot;tier&quot;),
+    &quot;南昌&quot;: (23.0, &quot;tier&quot;), &quot;南宁&quot;: (23.0, &quot;tier&quot;), &quot;兰州&quot;: (22.0, &quot;tier&quot;),
+    &quot;沈阳&quot;: (22.0, &quot;tier&quot;), &quot;石家庄&quot;: (22.0, &quot;exact&quot;), &quot;郑州&quot;: (21.8, &quot;exact&quot;),
+    &quot;贵阳&quot;: (21.8, &quot;exact&quot;), &quot;长春&quot;: (21.0, &quot;tier&quot;), &quot;哈尔滨&quot;: (21.0, &quot;tier&quot;),
+    &quot;乌鲁木齐&quot;: (21.0, &quot;tier&quot;), &quot;太原&quot;: (20.3, &quot;exact&quot;),
+    &quot;呼和浩特&quot;: (20.1, &quot;exact&quot;), &quot;南通&quot;: (20.0, &quot;tier&quot;),
+    &quot;惠州&quot;: (19.0, &quot;tier&quot;), &quot;西宁&quot;: (20.0, &quot;tier&quot;), &quot;银川&quot;: (15.5, &quot;exact&quot;),
+}
+SH_INDEX = CITY_INDEX[&quot;上海&quot;][0]
+
+
+def haversine(lon, lat):
+    &quot;&quot;&quot;经纬度 → 距市中心公里数&quot;&quot;&quot;
+    r = 6371.0
+    p1, p2 = math.radians(lat), math.radians(CENTER_LAT)
+    dp = p2 - p1
+    dl = math.radians(CENTER_LON - lon)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(a))
+
+
+def parse_floor(level_text):
+    &quot;&quot;&quot;&#x27;中楼层/16层&#x27; → (所在楼层估计值, 总楼层)&quot;&quot;&quot;
+    try:
+        head, total = level_text.split(&quot;/&quot;)
+        total = int(total.replace(&quot;层&quot;, &quot;&quot;).strip())
+        factor = {&quot;低楼层&quot;: 0.2, &quot;中楼层&quot;: 0.5, &quot;高楼层&quot;: 0.8}.get(head.strip(), 0.5)
+        return max(1, round(total * factor)), total
+    except Exception:
+        return None, None
+
+
+def load_real_rows():
+    rows = []
+    with open(RAW, &quot;r&quot;, encoding=&quot;utf-8-sig&quot;, errors=&quot;replace&quot;, newline=&quot;&quot;) as f:
+        for r in csv.DictReader(f, fieldnames=COLS):
+            try:
+                price = float(r[&quot;price&quot;])
+                area = float(r[&quot;area&quot;])
+                lon, lat = float(r[&quot;lon&quot;]), float(r[&quot;lat&quot;])
+                floor, total = parse_floor(r[&quot;level&quot;])
+                if floor is None:
+                    continue
+                if not (1000 &lt;= price &lt;= 40000 and 10 &lt;= area &lt;= 250):
+                    continue
+                if not (120.8 &lt; lon &lt; 122.1 and 30.6 &lt; lat &lt; 31.9):
+                    continue
+                d = haversine(lon, lat)
+                if d &gt; 45:
+                    continue
+                # 装修程度：精装标签=3；否则按电梯、配套数给 1~2
+                fine = int(r[&quot;tag_fine_deco&quot;]) == 1
+                amen = int(float(r[&quot;amenities&quot;])) if r[&quot;amenities&quot;] else 0
+                if fine:
+                    deco = 3.0
+                elif r[&quot;elevator&quot;] == &quot;有&quot; and amen &gt;= 3:
+                    deco = 2.0
+                else:
+                    deco = 1.0
+                rows.append({
+                    &quot;dist&quot;: d, &quot;deco&quot;: deco, &quot;floor&quot;: float(floor),
+                    &quot;total_floor&quot;: float(total), &quot;area&quot;: area,
+                    &quot;price&quot;: price, &quot;subway&quot;: int(r[&quot;tag_subway&quot;]) == 1,
+                })
+            except (ValueError, TypeError, KeyError):
+                continue
+    return rows
+
+
+def build_dataset(seed=42):
+    &quot;&quot;&quot;真实房源为骨架，按公开城市租金指数扩展到多城市&quot;&quot;&quot;
+    rng = random.Random(seed)
+    real = load_real_rows()
+    cities = list(CITY_INDEX)
+    # 让上海样本占比高一些，其余城市均匀
+    weighted = [&quot;上海&quot;] * 3 + cities
+    data = []
+    for r in real:
+        city = rng.choice(weighted)
+        idx = CITY_INDEX[city][0]
+        scale = idx / SH_INDEX
+        # 注意：真实房源价格里已经包含距市中心的距离效应
+        #（实测 单价 与 距离 的相关系数为 -0.71），此处不能再叠加一次，
+        # 否则会重复计算。城市维度只做整体价格水平缩放。
+        price = r[&quot;price&quot;] * scale
+        price *= rng.gauss(1.0, 0.05)          # 市场噪声
+        price = max(500, price)
+        data.append({
+            &quot;x&quot;: [r[&quot;dist&quot;], r[&quot;deco&quot;], r[&quot;floor&quot;], idx, r[&quot;area&quot;]],
+            &quot;y&quot;: price,
+            &quot;city&quot;: city,
+        })
+    return data, len(real)
+
+
+class MLP:
+    &quot;&quot;&quot;5 → 24 → 16 → 1，ReLU 隐藏层，Adam 优化，MSE 损失（纯 numpy）&quot;&quot;&quot;
+
+    def __init__(self, dims, seed=7):
+        rs = np.random.RandomState(seed)
+        self.W, self.b = [], []
+        for i in range(len(dims) - 1):
+            fan_in, fan_out = dims[i], dims[i + 1]
+            self.W.append(rs.randn(fan_in, fan_out) * math.sqrt(2.0 / fan_in))
+            self.b.append(np.zeros((1, fan_out)))
+        self.mW = [np.zeros_like(w) for w in self.W]
+        self.vW = [np.zeros_like(w) for w in self.W]
+        self.mb = [np.zeros_like(b) for b in self.b]
+        self.vb = [np.zeros_like(b) for b in self.b]
+
+    def forward(self, X):
+        self.cache = [X]
+        a = X
+        for i in range(len(self.W) - 1):
+            z = a @ self.W[i] + self.b[i]
+            a = np.maximum(0, z)
+            self.cache.append((z, a))
+        return a @ self.W[-1] + self.b[-1]
+
+    def backward(self, pred, y):
+        n = y.shape[0]
+        d = 2.0 * (pred - y) / n
+        gW = [None] * len(self.W)
+        gb = [None] * len(self.b)
+        gW[-1] = self.cache[-1][1].T @ d
+        gb[-1] = d.sum(axis=0, keepdims=True)
+        d = d @ self.W[-1].T
+        for i in range(len(self.W) - 2, -1, -1):
+            z, _ = self.cache[i + 1]
+            dz = d * (z &gt; 0)
+            gW[i] = self.cache[i].T @ dz if i == 0 else self.cache[i][1].T @ dz
+            gb[i] = dz.sum(axis=0, keepdims=True)
+            d = dz @ self.W[i].T
+        return gW, gb
+
+    def step(self, gW, gb, lr, t):
+        b1, b2, eps = 0.9, 0.999, 1e-8
+        for i in range(len(self.W)):
+            for m, v, g, p in (
+                (self.mW[i], self.vW[i], gW[i], self.W[i]),
+                (self.mb[i], self.vb[i], gb[i], self.b[i]),
+            ):
+                m *= b1; m += (1 - b1) * g
+                v *= b2; v += (1 - b2) * (g * g)
+                mhat = m / (1 - b1 ** t)
+                vhat = v / (1 - b2 ** t)
+                p -= lr * mhat / (np.sqrt(vhat) + eps)
+
+
+def main():
+    data, n_real = build_dataset()
+    print(f&quot;真实房源清洗后: {n_real} 条 → 扩展样本: {len(data)} 条&quot;)
+
+    rs = np.random.RandomState(1)
+    rs.shuffle(data)
+    X = np.array([d[&quot;x&quot;] for d in data], dtype=np.float64)
+    y = np.array([d[&quot;y&quot;] for d in data], dtype=np.float64).reshape(-1, 1)
+
+    n_train = int(len(X) * 0.8)
+    Xtr, Xva = X[:n_train], X[n_train:]
+    ytr, yva = y[:n_train], y[n_train:]
+
+    x_mean, x_std = Xtr.mean(axis=0), Xtr.std(axis=0)
+    x_std[x_std == 0] = 1.0
+    y_mean, y_std = ytr.mean(), ytr.std()
+    Xtr_s, Xva_s = (Xtr - x_mean) / x_std, (Xva - x_mean) / x_std
+    ytr_s, yva_s = (ytr - y_mean) / y_std, (yva - y_mean) / y_std
+
+    net = MLP([5, 24, 16, 1])
+    curve = []
+    epochs, batch, lr, t = 900, 256, 0.004, 0
+    for ep in range(1, epochs + 1):
+        idx = np.random.RandomState(ep).permutation(len(Xtr_s))
+        for s in range(0, len(idx), batch):
+            k = idx[s:s + batch]
+            pred = net.forward(Xtr_s[k])
+            gW, gb = net.backward(pred, ytr_s[k])
+            t += 1
+            net.step(gW, gb, lr, t)
+        if ep % 15 == 0 or ep == 1:
+            tr = float(np.mean((net.forward(Xtr_s) - ytr_s) ** 2))
+            va = float(np.mean((net.forward(Xva_s) - yva_s) ** 2))
+            curve.append([ep, round(tr, 5), round(va, 5)])
+
+    def predict(Xs):
+        return net.forward(Xs) * y_std + y_mean
+
+    ptr, pva = predict(Xtr_s), predict(Xva_s)
+    mae = float(np.mean(np.abs(pva - yva)))
+    rmse = float(np.sqrt(np.mean((pva - yva) ** 2)))
+    r2 = float(1 - np.sum((yva - pva) ** 2) / np.sum((yva - yva.mean()) ** 2))
+    mape = float(np.mean(np.abs((pva - yva) / np.maximum(yva, 1))) * 100)
+
+    print(f&quot;验证集  R²={r2:.4f}  MAE={mae:.0f} 元  RMSE={rmse:.0f} 元  MAPE={mape:.1f}%&quot;)
+    print(f&quot;月租范围  真实样本 {y.min():.0f} ~ {y.max():.0f} 元&quot;)
+
+    # 单因素敏感性（把其余特征固定在中位数，看每个特征的影响方向）
+    med = np.median(Xtr, axis=0)
+    sens = {}
+    for j, name in enumerate([&quot;距市中心(km)&quot;, &quot;装修程度&quot;, &quot;楼层&quot;, &quot;城市物价&quot;, &quot;面积&quot;]):
+        lo, hi = np.percentile(Xtr[:, j], 10), np.percentile(Xtr[:, j], 90)
+        a, b = med.copy(), med.copy()
+        a[j], b[j] = lo, hi
+        pa = float(predict(((a - x_mean) / x_std).reshape(1, -1))[0, 0])
+        pb = float(predict(((b - x_mean) / x_std).reshape(1, -1))[0, 0])
+        sens[name] = {&quot;low&quot;: round(float(lo), 2), &quot;high&quot;: round(float(hi), 2),
+                      &quot;rent_low&quot;: round(pa), &quot;rent_high&quot;: round(pb),
+                      &quot;delta&quot;: round(pb - pa)}
+
+    model = {
+        &quot;meta&quot;: {
+            &quot;arch&quot;: &quot;5-24-16-1&quot;, &quot;activation&quot;: &quot;ReLU&quot;, &quot;optimizer&quot;: &quot;Adam&quot;,
+            &quot;loss&quot;: &quot;MSE&quot;, &quot;epochs&quot;: epochs, &quot;batch&quot;: batch, &quot;lr&quot;: lr,
+            &quot;train_size&quot;: n_train, &quot;val_size&quot;: len(Xva),
+            &quot;real_listings&quot;: n_real, &quot;total_samples&quot;: len(data),
+            &quot;features&quot;: [&quot;距市中心(km)&quot;, &quot;装修程度(0-3)&quot;, &quot;所在楼层&quot;, &quot;城市物价水平(元/㎡/月)&quot;, &quot;面积(㎡)&quot;],
+            &quot;target&quot;: &quot;月租(元/月)&quot;,
+        },
+        &quot;x_mean&quot;: x_mean.tolist(), &quot;x_std&quot;: x_std.tolist(),
+        &quot;y_mean&quot;: float(y_mean), &quot;y_std&quot;: float(y_std),
+        &quot;W&quot;: [w.tolist() for w in net.W], &quot;b&quot;: [b.tolist() for b in net.b],
+        &quot;metrics&quot;: {&quot;r2&quot;: round(r2, 4), &quot;mae&quot;: round(mae), &quot;rmse&quot;: round(rmse),
+                    &quot;mape&quot;: round(mape, 2)},
+        &quot;curve&quot;: curve, &quot;sensitivity&quot;: sens,
+        &quot;city_index&quot;: {k: v[0] for k, v in CITY_INDEX.items()},
+    }
+    out = os.path.join(HERE, &quot;model.json&quot;)
+    with open(out, &quot;w&quot;, encoding=&quot;utf-8&quot;) as f:
+        json.dump(model, f, ensure_ascii=False)
+    print(f&quot;已导出 {out}&quot;)
+
+    print(&quot;\n单因素敏感性（其余特征固定在中位数）：&quot;)
+    for k, v in sens.items():
+        print(f&quot;  {k:24s} {v[&#x27;low&#x27;]:&gt;8} → {v[&#x27;high&#x27;]:&lt;8} 月租 {v[&#x27;rent_low&#x27;]:&gt;6} → {v[&#x27;rent_high&#x27;]:&lt;6} ({v[&#x27;delta&#x27;]:+d})&quot;)
+
+
+if __name__ == &quot;__main__&quot;:
+    main()
+</pre>
+</details>
+<details>
+  <summary>浏览器里的推理逻辑（本页面实际运行的代码）</summary>
+  <pre>function relu(v){ return Math.max(0, v); }
+
+function matvec(a, W, b, activate){
+  const out = [];
+  for(let j=0;j&lt;W[0].length;j++){
+    let s = b[0][j];
+    for(let i=0;i&lt;a.length;i++) s += a[i]*W[i][j];
+    out.push(activate ? relu(s) : s);
+  }
+  return out;
+}
+
+function forward(x){
+  // 1) 用训练时保存的均值/标准差做标准化
+  const xs = x.map((v,i)=&gt;(v - MODEL.x_mean[i]) / MODEL.x_std[i]);
+  // 2) 两层隐藏层（ReLU）
+  const a1 = matvec(xs,  MODEL.W[0], MODEL.b[0], true);
+  const a2 = matvec(a1,  MODEL.W[1], MODEL.b[1], true);
+  // 3) 输出层（线性）并反标准化
+  const out = matvec(a2, MODEL.W[2], MODEL.b[2], false)[0];
+  return { pred: out * MODEL.y_std + MODEL.y_mean, a1, a2 };
+}</pre>
+</details>
+
+<h2 id="s8"><span class="n">PART 08</span>局限性与参考资料</h2>
+
+<div class="callout warn">
+  <b>这个模型的边界</b>
+  <ul style="margin-top:6px">
+    <li>数据是 2020 年上海挂牌房源，与 2026 年市场水平有明显时差；近年租金整体下行。</li>
+    <li>「装修程度」「楼层」是从标签和文本折算的代理变量，不是真实评级。</li>
+    <li>多城市样本是按公开租金指数缩放构造的，不是真实多城市成交记录。</li>
+    <li>MLP 是黑盒，且这里没有做特征交叉、正则化调参、交叉验证；换一份数据需要重新训练。</li>
+    <li>若要用在真实场景，应改用近期的真实多城市数据，并补上学区、地铁、房龄、朝向、户型、季节等特征。</li>
+  </ul>
+</div>
+
+<h3>参考资料（均为公开网络材料）</h3>
+<ol style="font-size:14px">
+  <li>上海链家租房数据集 · GitHub： <a href="https://github.com/XiyueWang/shanghai_rental_analysis_lianjia" target="_blank">XiyueWang/shanghai_rental_analysis_lianjia</a></li>
+  <li>《财经》2025 上半年中国一二线城市的房租变化： <a href="https://news.caijingmobile.com/article/detail/552055" target="_blank">news.caijingmobile.com/article/detail/552055</a></li>
+  <li>中指研究院《2025 一季度中国住房租赁市场总结》： <a href="https://www.cih-index.com/news/2025-04-23/52652700.html" target="_blank">cih-index.com</a></li>
+  <li>麟评居住大数据研究院《10 月全国大中城市租金均价》： <a href="http://www.hbrea.cn/article/13_1303_0_2221617.html" target="_blank">hbrea.cn</a></li>
+  <li>住房租金时空演变特征及其影响因素研究 —— 以武汉市主城区为例： <a href="https://search.napstic.cn/literature/degree/0620210900022125" target="_blank">napstic.cn</a></li>
+  <li>基于特征价格模型的租赁住宅价格机制研究 —— 以广州市为例： <a href="https://search.napstic.cn/literature/degree/0620210900011633" target="_blank">napstic.cn</a></li>
+  <li>Investigating the Determinants of Housing Rents in Hangzhou（空间多层模型）： <a href="https://www.peerkeke.com/article/29046599" target="_blank">peerkeke.com</a></li>
+  <li>城市轨道交通沿线住宅租金的空间分异分析 —— 长沙市： <a href="https://www.jjdl.com.cn/CN/PDF/10.15957/j.cnki.jjdl.2021.07.011" target="_blank">jjdl.com.cn</a></li>
+  <li>中新经纬：价格特征模型与「60 定律」： <a href="https://www.jwview.com/jingwei/html/12-24/370409.shtml" target="_blank">jwview.com</a></li>
+</ol>
+
+<footer>
+  <p>数据 → 特征 → MLP → 训练 → 导出权重 → 浏览器推理 → 静态页面发布</p>
+  <p style="margin-top:4px">单文件静态 HTML，无外部依赖，可离线打开 · 托管于 GitHub Pages</p>
+</footer>
+
+</div>
+
+<script>
+const MODEL = {"meta":{"arch":"5-24-16-1","activation":"ReLU","optimizer":"Adam","loss":"MSE","epochs":900,"batch":256,"lr":0.004,"train_size":8202,"val_size":2051,"real_listings":10253,"total_samples":10253,"features":["距市中心(km)","装修程度(0-3)","所在楼层","城市物价水平(元/㎡/月)","面积(㎡)"],"target":"月租(元/月)"},"x_mean":[12.659446715566144,2.3324798829553766,6.659229456230188,40.01137527432309,89.20543769812241],"x_std":[9.413034086953857,0.8955665382486444,5.74760264400697,29.187681303990733,44.9679840015044],"y_mean":3185.3969356545826,"y_std":3585.0228122411845,"W":[[[0.307620640211222,-0.3240339543831765,-0.4707549554080673,-0.38122505585137056,0.23274216131541137,0.6248104110605427,-0.9931109807856151,0.2512533113476193,0.29825193371728864,0.5002074801247504,-0.6669474882904882,-0.9936828533756922,-0.6801740650672887,-1.995071598218584,0.012569170611281903,-0.6335210821850941,0.007601559284875771,0.4279309348746354,0.7699006093441787,-0.9153251162274846,1.844705773278953,0.4781480526570957,-1.2941645003343036,0.8869719758884219],[-0.12121374207401213,-0.7281992837421234,0.3157985877986243,-1.616241747992843,0.9271902850630191,-0.6638911234392297,-0.9409512436200858,1.1025659189056638,-1.0037122671468954,0.6555124920242906,-0.9737880965764819,-0.6980302857117359,-0.05941889811059163,0.2122190247234163,2.0052378109087203,-0.20148906285260154,0.5008271361354146,0.7592468442255195,0.6652448038470037,0.08973874536037629,-0.645106946185313,-1.2153262817367325,-0.09330595179955894,1.4937462226858031],[0.29062126721717213,-0.23770541537929354,0.6540841148551234,0.5311364261648682,-0.39664200191335475,0.23009845073939506,0.4134729062780087,-0.33845246257967365,-1.2899783567007317,0.4253813829226849,0.25853710474133274,0.695614986174437,0.29577304307355307,-0.22442062876064775,-0.3875154745292164,0.6115633664695559,-0.1025419591368008,-0.8894167354420313,-1.087382384242033,-0.6954498757043411,-0.10835568516975705,-0.3646528533020161,0.6027304410668999,-0.03794645883989634],[0.3372180526783541,0.9151528953624748,0.7755027034658816,0.4910651912987875,-0.06813642795287934,0.7905020169048492,-0.01243337094406032,-1.5810997565868328,0.749489682324279,0.7968357906660688,0.27402355143933954,-0.792905591107822,-0.10989243422052422,-0.30056890598731045,-0.09458650807329483,0.548336868067738,1.035208372553875,0.665734104745328,0.5094259231251299,0.721230373831238,0.2784267593285555,-0.3780754715063193,-0.12217724662525495,-0.058754377703627896],[1.5444896401278105,0.54699530535781,-0.011812499210223005,-0.2844581200660682,-1.149344630312414,-0.32429657195662154,-0.02961806657040442,-0.05828044261304004,0.6762351931172753,-0.6308448369079599,0.653155600293499,0.638913892858497,1.522595526904215,-0.04254620752051059,0.318119278961013,0.28002860094825666,0.3818909934178704,0.16894614780586767,-0.9549157406922343,-0.028713809437002146,0.0438810319978513,-0.09377762078140017,-0.2333504267669492,1.1084109567578675]],[[0.2542775482651005,0.5969416282127923,-0.7751364374121097,-0.80645482621941,0.20430961380991608,1.3187865930583245,0.09833747465726127,-0.15781458802421797,0.7173465969050866,0.7485270073955809,0.3059605367191453,0.3516695934016284,0.2192256092201865,-0.0022322733504341868,-4.271325341505766,-0.8715593566178348],[0.25081243292153443,-0.30040999709340693,-8.4193601743559,0.24942418374310457,0.5546989830653065,0.3226275425982464,-0.2518225862867829,-0.5940984904025493,-0.4271751894136077,0.021215036763113582,0.07389882235217544,0.02207840730566606,0.31455060296063486,-0.5046668802208822,-5.020179372056678,-0.4159794524549082],[0.08260596317464611,0.2619087357949931,0.5243623020592287,0.6002876974355601,-0.15687714857865348,0.3274784136476013,0.21419344620206918,-0.050744777403962216,-0.7835547407743031,-0.6128726561756039,0.4644002730032413,-0.8392441316930593,-1.4624735474497281,0.13511472421973225,1.041190616415206,0.7527325009784879],[-0.3745387464838803,-1.4766148142626168,0.07597275942135508,0.21715745793987876,-0.13724749344242057,-0.08488580566278196,-0.42820239187418707,-0.4104377476227399,0.27654417720558444,-0.21728134452483322,-0.6917838462063008,-0.17981259493497176,-0.12147837383592588,0.023564384026493943,0.6241549382247444,0.061075122222164005],[-0.012818737191784385,-0.6478224340174514,-1.0402010945646034,-0.21821781252294475,-0.4262606122173067,0.37000187684110863,-0.40458465253677656,-0.3826431618728227,0.8459536404979443,-1.794504104028036,-1.0948640981484123,-0.7355639612545163,-0.61011411734022,0.035834687437028945,0.291919975400531,-0.22583082196301082],[-0.9625930225138262,0.514028860774639,-0.8040064423417005,-1.0388420710823023,-0.17946472271793404,0.30577744859277006,-0.03806782928120292,-1.205689444331992,-0.6925083047330454,-0.394290160023096,-0.45969831623147134,-0.7209053551674335,0.4394351126304978,-0.20314842815005135,-0.29187550875454277,-0.058351135253634],[0.2545965806427308,1.9312414053666285,-1.4783577369941938,0.6946628411561834,-0.6285432517340239,0.14540839794719132,-0.10818117365355928,1.500819600240443,-0.09967491500498156,-1.3317656950263796,0.7951362099239087,0.11129324060495907,-1.9371846087194249,0.27857274151680816,-0.21361311283387854,-0.41979964011230264],[1.1866338250192539,-0.5364190617638023,0.35092704153333354,-0.41415716805641495,-0.16758549418492355,-3.8911056114332077,-0.16762596404551794,-0.1939237795351067,0.13781184724215517,0.25221333136786517,0.07306342265835064,-0.8323973586192592,0.6814277322630518,-0.3728428004081833,0.4288616289746636,-0.764939118417486],[0.3149828005967955,1.4088636713670744,-0.24850382876331317,-0.0532416111555695,0.44811436462094123,0.3897985420715058,-0.17954828497282074,-0.9002990223469066,-0.3072715589337696,0.26384890639367065,1.7524238396794292,1.5748636651184489,0.1759098139630727,0.20875172747191476,-0.8219288791424859,0.8765842282177242],[0.23652620554984238,0.6402685123027864,0.02161533729321069,-0.15646659851492375,-0.029874999981509488,0.4424996166596065,-0.41564535019205556,0.03688570301788746,0.10413490064308664,-3.147281321441721,0.7448328703724363,-0.16505740339520003,-0.33706220991394337,-0.3071425459335187,-0.5328406086483407,0.17987983167869653],[0.4033862945071131,-0.27760858731790444,-0.0023282205084165634,0.28383250198035603,0.8784041358993667,-0.08082370673566114,-0.0635598572206256,-0.7220691254204133,-0.32613020128889786,0.47475846982294034,0.1264356077555667,0.02091107409995588,0.21239088819034502,-0.2947925865122407,-3.820238043712049,0.6427003450470785],[0.7800575695488414,0.4766316713480993,-0.05916797990048591,0.3581936026904041,0.2138607355368571,0.3878435599194732,-0.4351088644734658,0.5887364927986747,1.0633678530086355,-0.9530495846194317,-0.26991503913544795,0.21222430052936553,-0.4714788275785596,-0.6886839091736275,-0.10882993040734641,-1.1295055364715691],[0.8015776124482437,0.0864959590198683,0.1986851964865019,-0.2919341585719941,1.2476668659567,0.5221653385748449,-0.23409927301727096,-0.04635562880559791,0.8903255938599346,0.6330423027630174,0.1692264171451897,-0.01157119340222082,-0.09819773634281691,-0.06180284345999087,1.0792578979896672,0.26241218791822896],[0.6676598593890187,-0.8665830746281551,0.8478663320636914,0.8666730946037374,0.3423427024547246,0.014892768734604392,-0.002027646026376744,-1.0032546896360879,0.5272782319267386,0.21081602164927554,1.1445018269180247,0.00496827043302969,0.9011109896944348,-0.35589408941407435,-0.8688832731833167,-4.404280208142829],[-0.8353161890481292,0.48899556145986056,0.24546851545613016,0.6709355657359686,0.6653819046809771,-0.26371030410676044,0.41096502487295855,0.99220810934476,-0.360965030442652,-1.3218267127068262,0.2639802192848726,-0.733378180733801,-0.4228614095535225,-0.05455488378520798,-1.8221772624171417,-0.8936561108846686],[-0.04302650567317254,0.13342757147110773,-0.9184457474075999,0.13581120116785544,0.11840250643747591,-0.12554817346482197,-0.17921186990320193,0.007287469513649753,-0.2663255609063933,-0.2654792093836387,0.5249524511637945,-1.0000876432503933,0.25042356487471623,0.323035571635995,-0.5184157856791806,-0.022918201084036544],[-0.9868444116992718,0.45655513405011866,-0.26747177307921866,0.3366888501110195,0.72133972677403,0.20788249289252525,-0.33809945275272274,-0.18062957951062236,-0.3665419375836208,0.12110485061966905,0.08925552681659125,0.6259687223745911,0.3703456536691308,-0.24236491130468682,-2.607861307024844,0.273933264006306],[-1.048373518016135,-0.22856267029859684,-9.688461940035493,0.6199594866093238,0.4440291866945219,0.27859926185150197,0.470959744261537,0.9255691479425538,-0.10747306922493387,0.6884604553513644,-0.36486224751106655,-0.8532546484437117,0.7156589850140321,-0.5333446124252545,-3.907394955664106,-0.3015019113838657],[0.02503041295411998,-2.0487695763800655,0.11447009809929737,-0.3284545306352608,-0.2039256740521359,-1.0729839556466303,-0.35638136905250045,0.559629913290417,-0.6731035278886093,2.375081058789006,0.052338398990144176,0.42130024567821467,-0.3479210607424268,-0.3928692997641582,-0.12975252206608365,0.3188817697255975],[-1.8187316065950994,-0.03369384721301164,0.9855965013594751,-0.211485524614132,0.29052320321258024,0.47387273470502134,-0.18465899849580197,0.3648991654573339,-0.31283979154361186,-0.46835426673848474,0.19126133581613716,-3.1951351876115663,-1.7400737630075098,0.015322818887338045,0.9288119682953477,0.5656270029538409],[0.1363328619901744,-0.8382380769363947,0.7855086879623829,-0.35971915849214753,0.14640501821092353,-0.3610736885518535,0.20542832657066393,-0.11299505594037572,0.06783386110351625,-0.7258052356532639,-1.972654837323636,-2.0019797438027482,-0.18595496981216866,-0.2563229233554199,0.28758953964603157,0.3384811916778553],[0.04230807361688988,-3.2956428756392673,-1.5777525903223888,-0.9443793702819776,-0.19977029399156462,-1.0762827316374848,-0.4075647421924469,-1.7686850228629931,0.4938935435603181,0.11206238820454897,0.841804566412911,0.3112783151795852,-0.0889953769400523,-0.052862109714073194,-1.0893349036873752,0.22519280801080396],[-1.2466982202745485,0.0783657427868347,-0.018947842138780653,0.028832791580197255,-0.03021676788447967,-1.0288939176422238,-0.10182692977833305,0.10419896886912203,0.35726168713971224,1.5938306463749599,-0.3371718212832353,-0.4771856849477263,-0.9793001980294661,-0.44198530119795826,-0.12750237770829004,-0.3589964702422043],[-0.8252520824201551,0.03360986443351868,-1.0834400368115162,-0.1367165315818555,-0.00789788476428474,-0.08578862592820943,-0.5441842473783497,0.38976775860725266,0.34091303651084165,0.2790307746346501,-0.8577582914630696,-0.8006017445061272,0.20389301798886678,-0.5885044946885508,-0.046554769344125425,0.2727282173251278]],[[-0.15032588655260634],[0.27115851130067586],[-0.3497803474103658],[0.16341433494214835],[0.2946934484090643],[0.19972172418679487],[-0.05308056139141146],[-0.1643131050064204],[-0.22660047265670874],[-0.5736710166487689],[0.6274102947001978],[-0.7294557009762975],[-0.13959841351162372],[-0.3598572836521009],[-0.14944616279206635],[-0.1484842651363066]]],"b":[[[-2.1399348200668236,-0.15060097514911372,-0.8824799159710874,0.45884861883205397,0.6350140668098971,-0.5208654532072056,-1.405367843319537,-0.1004733140272585,-1.8148150390259252,-0.40856592804415776,-0.9264706557123383,-0.5475389603077047,-1.1884320410022746,-1.3437192858792322,-0.1252136680562597,-0.1804505893009225,0.17261518128811437,-0.5959477088566121,-0.03577997402198604,-0.9861542611502944,0.8963779323388184,-0.21464489640224987,-0.6622220200513739,-0.013430523070227992]],[[0.15733922328892858,-0.09379818424348584,-0.34398046204225136,0.5938413690941767,0.07336857789306722,-0.22573583403502898,-0.41206882404782863,0.10117789265636888,0.3168213925089683,-0.7159162810306008,-0.37015397389186794,-0.2568838461300616,0.37848370808217524,-0.19933917801213324,0.12742872105816813,0.20214223723964198]],[[0.0614367881889372]]],"metrics":{"r2":0.8828,"mae":697,"rmse":1318,"mape":22.1},"curve":[[1,0.32678,0.38168],[15,0.14581,0.15316],[30,0.13293,0.14572],[45,0.13381,0.14855],[60,0.1307,0.14769],[75,0.12464,0.14031],[90,0.12946,0.1422],[105,0.12595,0.1444],[120,0.12218,0.1389],[135,0.12246,0.13982],[150,0.12192,0.13701],[165,0.11901,0.13647],[180,0.11898,0.13401],[195,0.12233,0.14297],[210,0.13166,0.14396],[225,0.11684,0.13366],[240,0.11743,0.13588],[255,0.11684,0.13581],[270,0.1187,0.14188],[285,0.11559,0.13557],[300,0.11801,0.13631],[315,0.12045,0.13865],[330,0.11749,0.13926],[345,0.11421,0.13712],[360,0.11609,0.14586],[375,0.11367,0.13887],[390,0.11466,0.13998],[405,0.11692,0.13791],[420,0.11272,0.13307],[435,0.11395,0.14251],[450,0.11171,0.1338],[465,0.11741,0.14319],[480,0.11304,0.13962],[495,0.11209,0.13663],[510,0.12137,0.15348],[525,0.11098,0.13754],[540,0.11753,0.14917],[555,0.11529,0.13945],[570,0.11109,0.13563],[585,0.11177,0.13429],[600,0.11542,0.13696],[615,0.11552,0.14241],[630,0.10837,0.13972],[645,0.11395,0.13741],[660,0.11154,0.1458],[675,0.1345,0.15127],[690,0.10832,0.14173],[705,0.11008,0.13635],[720,0.11073,0.13584],[735,0.10736,0.13464],[750,0.1105,0.13758],[765,0.10643,0.13828],[780,0.10953,0.14389],[795,0.10661,0.13915],[810,0.10832,0.14311],[825,0.10932,0.14549],[840,0.1057,0.14021],[855,0.10776,0.14405],[870,0.1111,0.13797],[885,0.10584,0.13695],[900,0.10672,0.13526]],"sensitivity":{"距市中心(km)":{"low":2.89,"high":27.4,"rent_low":2983,"rent_high":892,"delta":-2091},"装修程度":{"low":1.0,"high":3.0,"rent_low":1341,"rent_high":1841,"delta":500},"楼层":{"low":1.0,"high":14.0,"rent_low":1813,"rent_high":2012,"delta":199},"城市物价":{"low":20.1,"high":104.4,"rent_low":1496,"rent_high":7427,"delta":5931},"面积":{"low":40.0,"high":150.0,"rent_low":1220,"rent_high":4222,"delta":3002}},"city_index":{"北京":117.2,"上海":104.4,"深圳":96.8,"杭州":62.5,"广州":59.5,"南京":54.2,"厦门":45.0,"三亚":48.0,"苏州":34.0,"宁波":32.0,"福州":32.0,"天津":32.0,"武汉":30.0,"青岛":29.0,"大连":28.0,"成都":28.0,"西安":26.0,"合肥":26.0,"长沙":25.0,"重庆":25.0,"昆明":24.0,"南昌":23.0,"南宁":23.0,"兰州":22.0,"沈阳":22.0,"石家庄":22.0,"郑州":21.8,"贵阳":21.8,"长春":21.0,"哈尔滨":21.0,"乌鲁木齐":21.0,"太原":20.3,"呼和浩特":20.1,"南通":20.0,"惠州":19.0,"西宁":20.0,"银川":15.5}};
+
+function relu(v){ return Math.max(0, v); }
+
+function matvec(a, W, b, activate){
+  const out = [];
+  for(let j=0;j<W[0].length;j++){
+    let s = b[0][j];
+    for(let i=0;i<a.length;i++) s += a[i]*W[i][j];
+    out.push(activate ? relu(s) : s);
+  }
+  return out;
+}
+
+function forward(x){
+  const xs = x.map((v,i)=>(v - MODEL.x_mean[i]) / MODEL.x_std[i]);
+  const a1 = matvec(xs, MODEL.W[0], MODEL.b[0], true);
+  const a2 = matvec(a1, MODEL.W[1], MODEL.b[1], true);
+  const out = matvec(a2, MODEL.W[2], MODEL.b[2], false)[0];
+  return { pred: out*MODEL.y_std + MODEL.y_mean, a1:a1, a2:a2 };
+}
+
+function color(v, max){
+  const t = Math.max(0, Math.min(1, v/max));
+  const r = Math.round(238 - 79*t), g = Math.round(242 - 76*t), b = Math.round(255 - 66*t);
+  return 'rgb('+r+','+g+','+b+')';
+}
+
+function renderActs(id, arr){
+  const max = Math.max(0.001, ...arr.map(Math.abs));
+  document.getElementById(id).innerHTML = arr
+    .map(v=>'<span class="act" style="background:'+color(v,max)+'" title="'+v.toFixed(3)+'"></span>').join('');
+}
+
+const decoName = {1:'简装', 2:'中等', 3:'精装'};
+const ids = ['dist','deco','floor','city','area'];
+function update(){
+  const d = parseFloat(document.getElementById('dist').value);
+  const deco = parseFloat(document.getElementById('deco').value);
+  const fl = parseFloat(document.getElementById('floor').value);
+  const city = parseFloat(document.getElementById('city').value);
+  const area = parseFloat(document.getElementById('area').value);
+  document.getElementById('v_dist').textContent = d + ' km';
+  document.getElementById('v_deco').textContent = deco + ' · ' + decoName[deco];
+  document.getElementById('v_floor').textContent = fl + ' 层';
+  document.getElementById('v_area').textContent = area + ' ㎡';
+
+  const r = forward([d, deco, fl, city, area]);
+  const rent = Math.max(0, Math.round(r.pred/10)*10);
+  document.getElementById('out').textContent = rent.toLocaleString('zh-CN');
+  document.getElementById('out_unit').textContent = (rent/area).toFixed(1);
+  document.getElementById('out_ratio').textContent = ((rent/area)/city*100).toFixed(0) + '%';
+  renderActs('acts1', r.a1);
+  renderActs('acts2', r.a2);
+}
+ids.forEach(id=>document.getElementById(id).addEventListener('input', update));
+update();
+</script>
+</body>
+</html>
